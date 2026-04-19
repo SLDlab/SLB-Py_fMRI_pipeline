@@ -9,7 +9,7 @@ The output is designed to be:
 Example:
   python3 build_analysis_index.py \
     --task-group tmth \
-    --work-root /data/sld/homes/vguigon/slb_work
+    --work-root $SLB_USER_ROOT
 
 Or, from the repository root:
   python3 scripts/report/build_analysis_index.py \

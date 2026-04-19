@@ -21,12 +21,12 @@ set -euo pipefail
 # -------------------------
 # Defaults
 # -------------------------
-CONTAINER_DEFAULT="/data/sld/homes/vguigon/slb_work/containers/fitlins_patched/fitlins-0.11.0_pybids-0.15.6_patched.sif"
+CONTAINER_DEFAULT="${SLB_FITLINS_PATCHED_SIF:?ERROR: SLB_FITLINS_PATCHED_SIF is not set.}"
 FITLINS_BIN_DEFAULT="/opt/conda/envs/fitlins/bin/fitlins"
 
-DERIV_ROOT_DEFAULT="/data/sld/homes/collab/slb/derivatives"
+DERIV_ROOT_DEFAULT="${SLB_DERIV_ROOT:?ERROR: SLB_DERIV_ROOT is not set.}"
 DERIV_LABEL_DEFAULT="fmriprep"          # FitLins --derivative-label
-DERIV_SUBDIR_DEFAULT="fmriprep"         # Typically same as label; can differ
+DERIV_SUBDIR_DEFAULT="fmriprep_runs"         # Typically same as label; can differ
 
 SPACE_DEFAULT="MNI152NLin2009cAsym"
 NCPUS_DEFAULT="8"
@@ -36,8 +36,9 @@ MEM_GB_DEFAULT="16"
 SMOOTH_DEFAULT=""
 
 # Work/output defaults (if not provided)
-OUT_PARENT_DEFAULT="/data/sld/homes/vguigon/slb_work/fitlins_derivatives"
-WORK_DIR_DEFAULT="/data/sld/homes/vguigon/slb_work/work_fitlins"
+: "${SLB_USER_OUT:?ERROR: SLB_USER_OUT is not set.}"
+OUT_PARENT_DEFAULT="${SLB_USER_OUT:-${SLB_USER_ROOT}/fitlins_derivatives}"
+WORK_DIR_DEFAULT="${SLB_USER_WORK:-${SLB_USER_ROOT}/work_fitlins}"
 
 # -------------------------
 # Usage
@@ -284,7 +285,7 @@ CMD=(
   --model "${MODEL_JSON}"
   --participant-label "${SUBJ_ARR[@]}"
   --space "${SPACE}"
-  --slb_work-dir "${WORK_DIR_HOST}"
+  --w "${WORK_DIR_HOST}"
   --n-cpus "${NCPUS}"
   --mem-gb "${MEM_GB}"
   --drop-missing

@@ -54,6 +54,7 @@
 #       ObserveSlotMachine, PartnersChoice, SelfChoice, ButtonPress,
 #       Token, FixationCross
 
+import os
 import ast
 import re
 import sys
@@ -63,9 +64,18 @@ import pandas as pd
 
 
 # ---------- Paths ----------
-BEHAV_ROOT = Path("/data/sld/homes/collab/slb/behav_data/fMRI/data")
-BIDS_ROOT = Path("/data/sld/homes/vguigon/slb_work/slb_bids_runs")
-OL_DICT = Path("/data/sld/homes/vguigon/slb_work/docs/dictionaries/OL-DataDictionaryfMRI.csv")
+BEHAV_ROOT = Path(os.environ.get("SLB_BEHAV_ROOT", "/data/sld/homes/collab/slb/behav_data/fMRI/data"))
+
+SLB_ANALYSIS_ROOT = os.environ.get("SLB_ANALYSIS_ROOT")
+SLB_USER_BIDS_DIR = os.environ.get("SLB_USER_BIDS_DIR")
+
+if not SLB_USER_BIDS_DIR:
+    raise RuntimeError("SLB_USER_BIDS_DIR not set. Source your .slb_user_env first.")
+if not SLB_ANALYSIS_ROOT:
+    raise RuntimeError("SLB_ANALYSIS_ROOT not set. Source your .slb_global_env first.")
+
+BIDS_ROOT = Path(SLB_USER_BIDS_DIR)
+OL_DICT = Path(SLB_ANALYSIS_ROOT) / "docs" / "dictionaries" / "OL-DataDictionaryfMRI.csv"
 
 # ---------- OL runs ----------
 TASK_RUNS = [

@@ -34,14 +34,14 @@ USAGE
 -----
   # Dry run first to verify:
   python3 add_button_press_events.py \\
-    --src-bids-dir /path/to/slb_bids_runs \\
-    --dst-events-dir /path/to/slb_events_motor \\
+    --src-bids-dir $SLB_USER_BIDS_DIR \\
+    --dst-events-dir $SLB_USER_EVENTS_DIR/motor \\
     --tasks tm th --dry-run
 
   # Apply:
   python3 add_button_press_events.py \\
-    --src-bids-dir /path/to/slb_bids_runs \\
-    --dst-events-dir /path/to/slb_events_motor \\
+    --src-bids-dir $SLB_USER_BIDS_DIR \\
+    --dst-events-dir $SLB_USER_EVENTS_DIR/motor \\
     --tasks tm th
 
   # Build motor BIDS thin-clone using the custom events:

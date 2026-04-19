@@ -17,17 +17,27 @@
 # Carry-through columns are driven by 'Separate column' entries in the
 # Trust data dictionary ('Keep in .tsv file' column).
 
+import os
 import sys
 from pathlib import Path
 import pandas as pd
 
 
 # ---------- Paths ----------
-BEHAV_ROOT = Path("/data/sld/homes/collab/slb/behav_data/fMRI/data")
-BIDS_ROOT = Path("/data/sld/homes/vguigon/slb_work/slb_bids_runs")
+BEHAV_ROOT = Path(os.environ.get("SLB_BEHAV_ROOT", "/data/sld/homes/collab/slb/behav_data/fMRI/data"))
+SLB_ANALYSIS_ROOT = os.environ.get("SLB_ANALYSIS_ROOT")
+SLB_USER_BIDS_ROOT = os.environ.get("SLB_USER_BIDS_ROOT")
 
-# ---------- Data dictionary ----------
-TRUST_DICT = Path("/data/sld/homes/vguigon/slb_work/docs/dictionaries/Trust-DataDictionaryfMRI.csv")
+if not SLB_USER_BIDS_DIR:
+    raise RuntimeError("SLB_USER_BIDS_DIR not set. Source your .slb_user_env")
+
+BIDS_ROOT = Path(SLB_USER_BIDS_DIR)
+
+# --- Dictionary (shared repo) ---
+if not SLB_ANALYSIS_ROOT:
+    raise RuntimeError("SLB_ANALYSIS_ROOT not set. Source global env")
+
+TRUST_DICT = Path(SLB_ANALYSIS_ROOT) / "docs" / "dictionaries" / "Trust-DataDictionaryfMRI.csv"
 
 TASK_RUNS = [
     # (condition folder, run folder name, BIDS task label, BIDS run label)

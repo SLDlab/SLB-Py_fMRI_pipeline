@@ -41,7 +41,7 @@ Notes:
   - Infoseek and choice misses in the social block are independent and can co-occur.
   - These are canonical/base task events only. No GLM enrichment is performed here.
 """
-
+import os
 import sys
 from pathlib import Path
 
@@ -49,9 +49,17 @@ import pandas as pd
 
 
 # ---------- Paths ----------
-BEHAV_ROOT = Path("/data/sld/homes/collab/slb/behav_data/fMRI/data")
-BIDS_ROOT = Path("/data/sld/homes/vguigon/slb_work/slb_bids_runs")
-SRA_DICT = Path("/data/sld/homes/vguigon/slb_work/docs/dictionaries/SRA-DataDictionaryfMRI.csv")
+BEHAV_ROOT = Path(os.environ.get("SLB_BEHAV_ROOT", "/data/sld/homes/collab/slb/behav_data/fMRI/data"))
+SLB_ANALYSIS_ROOT = os.environ.get("SLB_ANALYSIS_ROOT")
+SLB_USER_BIDS_DIR = os.environ.get("SLB_USER_BIDS_DIR")
+
+if not SLB_USER_BIDS_DIR:
+    raise RuntimeError("SLB_USER_BIDS_DIR not set. Source your .slb_user_env first.")
+if not SLB_ANALYSIS_ROOT:
+    raise RuntimeError("SLB_ANALYSIS_ROOT not set. Source your .slb_global_env first.")
+
+BIDS_ROOT = Path(SLB_USER_BIDS_DIR)
+SRA_DICT = Path(SLB_ANALYSIS_ROOT) / "docs" / "dictionaries" / "SRA-DataDictionaryfMRI.csv"
 
 # ---------- SRA runs ----------
 # (cond_folder, run_folder, BIDS task label, BIDS run label or None, block)

@@ -66,8 +66,8 @@ NO_SUBMIT="0"               # set to 1 with --no-submit to write script but not 
 
 # Log directory for sbatch scripts and SLURM stdout/stderr.
 # Override with --logs-dir or LOGS_DIR= in your config file.
-LOGS_DIR="/data/sld/homes/vguigon/slb_work/slurm_logs"
-
+: "${SLB_USER_ROOT:?ERROR: SLB_USER_ROOT is not set.}"
+LOGS_DIR="${SLB_USER_ROOT}/slurm_logs"
 # ---------------------------------------------------------------------------
 # Config file loading (must mirror run_pipeline.sh so NCPUS / MEM_GB are set
 # before we build the sbatch header)

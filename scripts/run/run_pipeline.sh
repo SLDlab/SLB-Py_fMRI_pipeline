@@ -4,18 +4,22 @@ set -euo pipefail
 # ----------------------------------------
 # Defaults (override via --config or CLI flags)
 # ----------------------------------------
-WORK_ROOT="/data/sld/homes/vguigon/slb_work"
-BIDS_DIR="${WORK_ROOT}/slb_bids_runs"
+: "${SLB_USER_ROOT:?ERROR: SLB_USER_ROOT is not set. Source your .slb_user_env first.}"
+: "${SLB_USER_BIDS_DIR:?ERROR: SLB_USER_BIDS_DIR is not set.}"
+: "${SLB_DERIV_ROOT:?ERROR: SLB_DERIV_ROOT not set.}"
 
-DERIV_ROOT="/data/sld/homes/collab/slb/derivatives"
-DERIV_SUBDIR="fmriprep"
-DERIV_LABEL="fmriprep"
+WORK_ROOT="${SLB_USER_ROOT}"
+BIDS_DIR="${SLB_USER_BIDS_DIR}"
+
+DERIV_ROOT="${SLB_DERIV_ROOT}"
+DERIV_SUBDIR="fmriprep_runs"
+DERIV_LABEL="fmriprep_runs"
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODELS_DIR="${WORK_ROOT}/fitlins_models"
-OUT_PARENT="${WORK_ROOT}/fitlins_derivatives"
-FIG_PARENT="${WORK_ROOT}/figures"
-REPORTS_PARENT="${WORK_ROOT}/reports"
+MODELS_DIR="${SLB_USER_MODELS:-${WORK_ROOT}/fitlins_models}"
+OUT_PARENT="${SLB_USER_OUT:-${WORK_ROOT}/fitlins_derivatives}"
+FIG_PARENT="${SLB_USER_FIGURES:-${WORK_ROOT}/figures}"
+REPORTS_PARENT="${SLB_USER_REPORTS:-${WORK_ROOT}/reports}"
 
 # Task group (optional): if set, all output dirs are namespaced under a subdir.
 # Set in your config file to group models by task/study (e.g. TASK_GROUP="tmth").
