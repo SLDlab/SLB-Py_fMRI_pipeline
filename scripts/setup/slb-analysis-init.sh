@@ -4,26 +4,6 @@ set -euo pipefail
 # slb-analysis-init.sh
 # --------------------
 # Initialize a user's SLB analysis workspace up to thin-clone BIDS creation.
-#
-# This script does:
-#   1. source/check SLB env files
-#   2. load python/3.12.8 from /software/sld/modulefiles
-#   3. create user workspace directories
-#   4. create a user Python virtual environment
-#   5. install analysis_work/requirements.txt into the venv
-#   6. copy shared fitlins_configs and fitlins_models
-#   7. rebuild thin-clone BIDS
-#
-# This script does NOT:
-#   - initialize slb_events
-#   - add button press events
-#   - run any model/pipeline
-#
-# Usage:
-#   bash slb-analysis-init.sh
-#   bash slb-analysis-init.sh --force
-#   bash slb-analysis-init.sh --skip-copy
-#   bash slb-analysis-init.sh --skip-venv-install
 
 FORCE=0
 SKIP_COPY=0
@@ -39,11 +19,6 @@ Options:
   --skip-copy          Do not copy fitlins_configs and fitlins_models
   --skip-venv-install  Create venv but do not install requirements.txt
   -h, --help           Show this help
-
-Examples:
-  $(basename "$0")
-  $(basename "$0") --force
-  $(basename "$0") --force --skip-copy
 EOF
 }
 
@@ -61,8 +36,32 @@ GLOBAL_ENV="/data/sld/homes/collab/slb/.slb_global_env"
 USER_ENV="/data/sld/homes/${USER}/.slb_user_env"
 
 [[ -f "$GLOBAL_ENV" ]] || { echo "ERROR: global env not found: $GLOBAL_ENV" >&2; exit 1; }
-[[ -f "$USER_ENV"   ]] || { echo "ERROR: user env not found: $USER_ENV" >&2; exit 1; }
 
+# ✅ --- CREATE USER ENV IF MISSING ---
+if [[ ! -f "$USER_ENV" || "$FORCE" == "1" ]]; then
+  echo "[env] Creating user env: $USER_ENV"
+
+  cat > "$USER_ENV" <<EOF
+# SLB user environment
+
+export SLB_USER_ROOT="/data/sld/homes/$USER/slb_work"
+
+export SLB_USER_BIDS_DIR="\$SLB_USER_ROOT/slb_bids_runs"
+export SLB_USER_EVENTS_DIR="\$SLB_USER_ROOT/slb_events"
+export SLB_USER_CONFIGS="\$SLB_USER_ROOT/fitlins_configs"
+export SLB_USER_MODELS="\$SLB_USER_ROOT/fitlins_models"
+export SLB_USER_OUT="\$SLB_USER_ROOT/fitlins_derivatives"
+export SLB_USER_WORK="\$SLB_USER_ROOT/work_fitlins"
+export SLB_USER_REPORTS="\$SLB_USER_ROOT/reports"
+export SLB_USER_FIGURES="\$SLB_USER_ROOT/figures"
+EOF
+
+  echo "[env] Created."
+else
+  echo "[env] Using existing user env: $USER_ENV"
+fi
+
+# --- LOAD ENVS ---
 # shellcheck disable=SC1090
 source "$GLOBAL_ENV"
 # shellcheck disable=SC1090
@@ -92,29 +91,18 @@ SLB_USER_VENV="$SLB_USER_ROOT/venv"
 
 echo "== SLB analysis init =="
 echo "User:               $USER"
-echo "SLB_ANALYSIS_ROOT:  $SLB_ANALYSIS_ROOT"
 echo "SLB_USER_ROOT:      $SLB_USER_ROOT"
 echo "SLB_USER_BIDS_DIR:  $SLB_USER_BIDS_DIR"
 echo "SLB_USER_CONFIGS:   $SLB_USER_CONFIGS"
 echo "SLB_USER_MODELS:    $SLB_USER_MODELS"
 echo "SLB_USER_VENV:      $SLB_USER_VENV"
-echo "Requirements file:  $REQUIREMENTS_TXT"
 echo "Force:              $FORCE"
-echo "Skip copy:          $SKIP_COPY"
-echo "Skip venv install:  $SKIP_VENV_INSTALL"
 echo
-
-if ! command -v module >/dev/null 2>&1; then
-  echo "ERROR: environment modules command not available in this shell." >&2
-  echo "Try running this from a login shell on the server." >&2
-  exit 1
-fi
 
 echo "[module] Loading Python..."
 module use /software/sld/modulefiles
 module load python/3.12.8
 
-echo "[module] Active Python:"
 python3 --version
 
 if [[ "$FORCE" == "1" ]]; then
@@ -126,7 +114,7 @@ if [[ "$FORCE" == "1" ]]; then
     "$SLB_USER_VENV"
 fi
 
-echo "[dirs] Creating user workspace directories..."
+echo "[dirs] Creating directories..."
 mkdir -p \
   "$SLB_USER_ROOT" \
   "$SLB_USER_CONFIGS" \
@@ -137,60 +125,40 @@ mkdir -p \
   "$SLB_USER_FIGURES"
 
 if [[ ! -d "$SLB_USER_VENV" ]]; then
-  echo "[venv] Creating Python virtual environment..."
+  echo "[venv] Creating virtual environment..."
   python3 -m venv "$SLB_USER_VENV"
-else
-  echo "[venv] Existing venv found: $SLB_USER_VENV"
 fi
 
 # shellcheck disable=SC1090
 source "$SLB_USER_VENV/bin/activate"
 
-echo "[venv] Active Python:"
-python3 --version
-
-if [[ "$SKIP_VENV_INSTALL" == "0" ]]; then
-  if [[ -f "$REQUIREMENTS_TXT" ]]; then
-    echo "[venv] Installing requirements..."
-    python -m pip install --upgrade pip
-    python -m pip install -r "$REQUIREMENTS_TXT"
-    echo "[venv] Requirements installed."
-  else
-    echo "[venv] WARNING: requirements.txt not found at $REQUIREMENTS_TXT"
-    echo "[venv] Skipping dependency installation."
-  fi
-else
-  echo "[venv] Dependency installation skipped."
+if [[ "$SKIP_VENV_INSTALL" == "0" && -f "$REQUIREMENTS_TXT" ]]; then
+  echo "[venv] Installing requirements..."
+  python -m pip install --upgrade pip
+  python -m pip install -r "$REQUIREMENTS_TXT"
 fi
 
 if [[ "$SKIP_COPY" == "0" ]]; then
-  echo "[copy] Syncing shared configs/models into user workspace..."
+  echo "[copy] Copying configs/models..."
   rm -rf "$SLB_USER_CONFIGS" "$SLB_USER_MODELS"
   mkdir -p "$SLB_USER_CONFIGS" "$SLB_USER_MODELS"
   cp -R "$SHARED_CONFIGS/." "$SLB_USER_CONFIGS/"
   cp -R "$SHARED_MODELS/."  "$SLB_USER_MODELS/"
-  echo "[copy] Done."
-else
-  echo "[copy] Skipped."
 fi
 
 if [[ -e "$SLB_USER_BIDS_DIR" ]]; then
-  echo "[bids] Existing thin clone found: $SLB_USER_BIDS_DIR"
-  echo "[bids] Use --force to rebuild."
+  echo "[bids] Exists: $SLB_USER_BIDS_DIR (use --force to rebuild)"
 else
-  echo "[bids] Rebuilding thin clone..."
+  echo "[bids] Building thin clone..."
   python3 "$REBUILD_SCRIPT" \
     --src "$SLB_SOURCE_BIDS_DIR" \
     --dst "$SLB_USER_BIDS_DIR"
-  echo "[bids] Done."
 fi
 
 echo
-echo "== Complete =="
+echo "== Setup complete =="
 echo "Next steps:"
 echo "  source $GLOBAL_ENV"
-echo "  source $USER_ENV"
-echo "  module use /software/sld/modulefiles"
+echo "  source /data/sld/homes/$USER/.slb_user_env"
 echo "  module load python/3.12.8"
 echo "  source $SLB_USER_VENV/bin/activate"
-echo "  # then run user-specific event setup / pipeline commands"
