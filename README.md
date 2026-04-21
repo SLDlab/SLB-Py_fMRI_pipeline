@@ -18,8 +18,12 @@ Setup instructions for each are in the [One-time setup](#one-time-setup) section
 
 ## Directory layout
 
+The pipeline separates **shared data** (read-only) from **user workspaces** (writable).
+Each user works inside their own 'slb_work/' directory.
+
+### Shared directory
 ```
-work/
+analysis_work/
   slb_bids_runs/            Working BIDS directory (symlinked NIfTIs, local metadata)
   slb_events/
     original/               Reference copies of events TSVs from slb_bids_runs
@@ -37,12 +41,38 @@ work/
     build/                  Data preparation scripts (run once before analysis)
     run/                    Pipeline execution scripts (main entry points)
     report/                 PDF report and analysis index generators
+    setup/                  User environment initial setup
     validate/               Validation scripts
+.slb_global_env             Global environment
 ```
+### User directory
+```
+slb_work/
+  slb_bids_runs/            Working BIDS directory (symlinked NIfTIs, local metadata)
+  slb_events/
+    original/               Reference copies of events TSVs from slb_bids_runs
+    motor/                  Augmented events with button press delta events added
+  fitlins_models/           User run Model JSON files (*_smdl.json), one per analysis
+  fitlins_configs/          User run Config files (*. cfg), one per analysis
+  fitlins_derivatives/      User run FitLins outputs (statmaps, reports)
+  figures/                  Thresholded statistical maps (PNG) and manifests
+  reports/                  Generated PDF model reports, namespaced by task group
+  slurm_logs/               SLURM sbatch scripts and job logs
+.slb_user_env               user environment
+```
+
+
 
 ---
 
 ## Scripts
+
+**`scripts/setup/`** — data preparation, run once before analysis
+
+| Script                                                                                                 | Purpose                                                                         |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `slb-analysis-init.sh`                                                                       | Initialize user workspace (create env, venv, directories, configs/models, and BIDS thin clone)       |
+
 
 **`scripts/build/`** — data preparation, run once before analysis
 
@@ -78,19 +108,27 @@ work/
 
 ## One-time setup
 
-### 1. Build the working BIDS directory
+This pipeline uses a shared (read-only) + user (writable) architecture.
+- Shared resources are maintained centrally (analysis_work/)
+- Each user initializes their own workspace once
+
+---
+
+## Shared setup (Pre-configured and centrally maintained)
+
+### 1. Shared BIDS dataset : `/data/sld/homes/collab/slb/bids_runs`
 
 The shared BIDS data is read-only. This script creates a local working copy by symlinking NIfTI files and copying all metadata (JSON, TSV) so they can be edited without affecting the shared source.
 
 ```bash
 python3 rebuild_bids_runs_thinclone.py \
   --src /data/sld/homes/collab/slb/bids_runs \
-  --dst /data/sld/homes/vguigon/work/slb_bids_runs
+  --dst  "$SLB_USER_BIDS_DIR"
 ```
 
-The destination must not already exist. If you need to rebuild it, remove it first.
+### 2. fMRIPrep outputs :  `/data/sld/homes/collab/slb/derivatives/fmriprep_runs`
 
-### 2. Build the patched Apptainer container
+### 3. Patched FitLins container :  `analysis_work/containers/fitlins_patched/fitlins-0.11.0_pybids-0.15.6_patched.sif`
 
 ```bash
 cd containers/fitlins_patched/
@@ -105,6 +143,51 @@ The container is required because vanilla FitLins fails on this dataset with a `
 
 Only rebuild the container if `fitlins_patched.def` changes.
 
+### 4. Pipeline codebase  :  `analysis_work/`
+
+Users should **not modify any of the above**
+
+---
+
+## User setup (Run once)
+
+Each user must initialize their personal workspace.
+
+### 1. Load the shared environment
+
+```bash
+source /data/sld/homes/collab/slb/.slb_global_env
+```
+
+### 2. Configure user workspace
+
+#### 2a. Initialize your workspace
+
+```bash
+bash $SLB_ANALYSIS_ROOT/scripts/setup/slb-analysis-init.sh
+```
+This will automatically:
+
+- create your user environment file (~/.slb_user_env)
+- create your working directory (slb_work/)
+- set up a Python virtual environment
+- install required Python packages
+- copy configs and models into your workspace
+- build a thin-clone BIDS directory (slb_bids_runs/)
+
+To reset everything
+```bash
+bash $SLB_ANALYSIS_ROOT/scripts/setup/slb-analysis-init.sh --force
+```
+
+#### 2b. Activate your environment
+```bash
+source /data/sld/homes/$USER/.slb_user_env
+module use /software/sld/modulefiles
+module load python/3.12.8
+source $SLB_USER_ROOT/venv/bin/activate
+```
+
 ### 3. Initialize the events directory (non-standard events only)
 
 Standard visual models use the events TSVs already in `slb_bids_runs` and do not need this step. Models that require augmented events (e.g. motor models with button press delta events) use a separate `slb_events/` directory so the BIDS source is never modified.
@@ -114,9 +197,9 @@ Standard visual models use the events TSVs already in `slb_bids_runs` and do not
 Run this once before generating any augmented events. It creates `slb_events/original/` (a verbatim reference copy of all events TSVs) and the named subdirectory that will hold the augmented versions.
 
 ```bash
-bash init_events_dir.sh \
-  --bids-dir   /data/sld/homes/vguigon/work/slb_bids_runs \
-  --events-dir /data/sld/homes/vguigon/work/slb_events \
+bash  $SLB_ANALYSIS_ROOT/scripts/build/init_events_dir.sh \
+  --bids-dir   "$SLB_USER_BIDS_DIR" \
+  --events-dir "$SLB_USER_EVENTS_DIR" \
   --name motor
 ```
 
@@ -130,15 +213,15 @@ Each task has its own script that reads from `slb_events/original/` and writes a
 
 ```bash
 # Run with --dry-run for testing
-python3 add_tmth_button_press_events.py \
-  --src-bids-dir   /data/sld/homes/vguigon/work/slb_events/original \
-  --dst-events-dir /data/sld/homes/vguigon/work/slb_events/motor \
+python3 $SLB_ANALYSIS_ROOT/scripts/build/add_tmth_button_press_events.py \
+  --src-bids-dir   "$SLB_USER_EVENTS_DIR/original" \
+  --dst-events-dir "$SLB_USER_EVENTS_DIR/motor" \
   --tasks tm th --dry-run
 
 # Run without --dry-run when satisfied
-python3 add_tmth_button_press_events.py \
-  --src-bids-dir   /data/sld/homes/vguigon/work/slb_events/original \
-  --dst-events-dir /data/sld/homes/vguigon/work/slb_events/motor \
+python3 $SLB_ANALYSIS_ROOT/scripts/build/add_tmth_button_press_events.py \
+  --src-bids-dir   "$SLB_USER_EVENTS_DIR/original" \
+  --dst-events-dir "$SLB_USER_EVENTS_DIR/motor" \
   --tasks tm th
 ```
 
@@ -146,15 +229,15 @@ python3 add_tmth_button_press_events.py \
 
 ```bash
 # Run with --dry-run for testing
-python3 add_ol_button_press_events.py \
-  --src-bids-dir   /data/sld/homes/vguigon/work/slb_events/original \
-  --dst-events-dir /data/sld/homes/vguigon/work/slb_events/motor \
+python3 $SLB_ANALYSIS_ROOT/scripts/build/add_ol_button_press_events.py \
+  --src-bids-dir   "$SLB_USER_EVENTS_DIR/original" \
+  --dst-events-dir "$SLB_USER_EVENTS_DIR/motor" \
   --tasks obslearn --dry-run
 
 # Run without --dry-run when satisfied
-python3 add_ol_button_press_events.py \
-  --src-bids-dir   /data/sld/homes/vguigon/work/slb_events/original \
-  --dst-events-dir /data/sld/homes/vguigon/work/slb_events/motor \
+python3 $SLB_ANALYSIS_ROOT/scripts/build/add_ol_button_press_events.py \
+  --src-bids-dir   "$SLB_USER_EVENTS_DIR/original" \
+  --dst-events-dir "$SLB_USER_EVENTS_DIR/motor" \
   --tasks obslearn
 ```
 
@@ -162,15 +245,15 @@ python3 add_ol_button_press_events.py \
 
 ```bash
 # Run with --dry-run for testing
-python3 add_sra_button_press_events.py \
-  --src-bids-dir   /data/sld/homes/vguigon/work/slb_events/original \
-  --dst-events-dir /data/sld/homes/vguigon/work/slb_events/motor \
+python3 $SLB_ANALYSIS_ROOT/scripts/build/add_sra_button_press_events.py \
+  --src-bids-dir   "$SLB_USER_EVENTS_DIR/original" \
+  --dst-events-dir "$SLB_USER_EVENTS_DIR/motor" \
   --tasks riskself --dry-run
 
 # Run without --dry-run when satisfied
-python3 add_sra_button_press_events.py \
-  --src-bids-dir   /data/sld/homes/vguigon/work/slb_events/original \
-  --dst-events-dir /data/sld/homes/vguigon/work/slb_events/motor \
+python3 $SLB_ANALYSIS_ROOT/scripts/build/add_sra_button_press_events.py \
+  --src-bids-dir   "$SLB_USER_EVENTS_DIR/original" \
+  --dst-events-dir "$SLB_USER_EVENTS_DIR/motor" \
   --tasks riskself
 ```
 
@@ -181,7 +264,8 @@ All three scripts add the same three delta event types per button press (`button
 The shell scripts will not have the executable bit set. Run this once:
 
 ```bash
-chmod +x scripts/run/*.sh scripts/build/*.sh
+chmod +x $SLB_ANALYSIS_ROOT/scripts/run/*.sh \
+         $SLB_ANALYSIS_ROOT/scripts/build/*.sh
 ```
 
 Alternatively, invoke scripts explicitly with `bash` (e.g. `bash run_pipeline.sh ...`) to bypass the need for the executable bit.
@@ -189,6 +273,8 @@ Alternatively, invoke scripts explicitly with `bash` (e.g. `bash run_pipeline.sh
 ---
 
 ## Running an analysis
+
+Before running any analysis, make sure the environment is activated.
 
 ### Step 1: Write a model JSON
 
@@ -204,9 +290,10 @@ MODEL="my_model_stem"
 # MODEL_JSON left unset -> resolves to ${MODELS_DIR}/${MODEL}_smdl.json
 
 # -- Data paths ------------------------------------------------------------
-BIDS_DIR="/data/sld/homes/vguigon/work/slb_bids_runs"
+# BIDS_DIR auto-resolves from environment (do not set)
+# BIDS_DIR="/data/sld/homes/vguigon/work/slb_bids_runs"
 # EVENTS_DIR: set this for motor models; leave unset for visual/standard models
-# EVENTS_DIR="/data/sld/homes/vguigon/work/slb_events/motor"
+# EVENTS_DIR="${SLB_USER_EVENTS_DIR}/motor"
 DERIV_SUBDIR="fmriprep_runs"
 DERIV_LABEL="fmriprep"
 
@@ -246,22 +333,22 @@ SLURM_MAIL_TYPE="END,FAIL"
 
 ```bash
 # Full pipeline: FitLins -> fix report -> plot run-level -> plot group-level -> PDF report
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps all
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps all
 
 # Rerun FitLins even if output directory already exists
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps all --force
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps all --force
 
 # Plot only (FitLins already ran)
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps plot-run,plot-group
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps plot-run,plot-group
 
 # Plot and generate the PDF report
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps plot-run,plot-group,report
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps plot-run,plot-group,report
 
 # Plot with interactive 3D HTML viewers
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps plot-run,plot-group --view3d
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps plot-run,plot-group --view3d
 
 # Override threshold at the command line
-run_pipeline.sh --config fitlins_configs/my_model.cfg --thr-mode fixed --thr-fixed 4.0
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --thr-mode fixed --thr-fixed 4.0
 ```
 
 #### With SLURM
@@ -270,29 +357,29 @@ run_pipeline.sh --config fitlins_configs/my_model.cfg --thr-mode fixed --thr-fix
 
 ```bash
 # Submit full pipeline
-submit_pipeline.sh --config fitlins_configs/my_model.cfg --steps all
+$SLB_ANALYSIS_ROOT/scripts/run/submit_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps all
 
 # Submit plotting plus PDF report generation
-submit_pipeline.sh --config fitlins_configs/my_model.cfg --steps plot-run,plot-group,report
+$SLB_ANALYSIS_ROOT/scripts/run/submit_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps plot-run,plot-group,report
 
 # Inspect the sbatch script without submitting
-submit_pipeline.sh --config fitlins_configs/my_model.cfg --no-submit
+$SLB_ANALYSIS_ROOT/scripts/run/submit_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --no-submit
 
 # Print sbatch script to stdout only (nothing written or submitted)
-submit_pipeline.sh --config fitlins_configs/my_model.cfg --dry-run
+$SLB_ANALYSIS_ROOT/scripts/run/submit_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --dry-run
 ```
 
 Use SLURM for the `fitlins` step, which is CPU- and memory-intensive. Plotting steps (`plot-run`, `plot-group`) are lightweight and can run directly on the login node to avoid the ~5-minute SLURM overhead.
 
 ```bash
 # Submit FitLins only
-submit_pipeline.sh --config fitlins_configs/my_model.cfg --steps fitlins
+$SLB_ANALYSIS_ROOT/scripts/run/submit_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps fitlins
 
 # Then plot directly once the job finishes
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps plot-run,plot-group
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps plot-run,plot-group
 
 # Or plot and build the PDF report directly
-run_pipeline.sh --config fitlins_configs/my_model.cfg --steps plot-run,plot-group,report
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh --config $SLB_USER_CONFIGS/my_model.cfg --steps plot-run,plot-group,report
 ```
 
 ---
@@ -328,9 +415,9 @@ When not set in config or CLI, `run_pipeline.sh` derives these values automatica
 `parse_model.py` can also be called directly for inspection:
 
 ```bash
-python3 parse_model.py fitlins_models/my_model_smdl.json --field subjects
-python3 parse_model.py fitlins_models/my_model_smdl.json --field contrasts
-python3 parse_model.py fitlins_models/my_model_smdl.json --field group_nodes
+python3 $SLB_ANALYSIS_ROOT/scripts/run/parse_model.py $SLB_USER_MODELS/my_model_smdl.json --field subjects
+python3 $SLB_ANALYSIS_ROOT/scripts/run/parse_model.py $SLB_USER_MODELS/my_model_smdl.json --field contrasts
+python3 $SLB_ANALYSIS_ROOT/scripts/run/parse_model.py $SLB_USER_MODELS/my_model_smdl.json --field group_nodes
 ```
 
 ---
@@ -359,12 +446,12 @@ Thresholding is applied by `plot_fmri_statmaps.py` at visualization time and doe
 FitLins generates an HTML report under `fitlins_derivatives/<model>/reports/`. The report contains design matrices, correlation matrices, and contrast figures, but the image paths it writes are relative to the container's internal filesystem and break when opened outside it. The `fixreport` step in `run_pipeline.sh` calls `fix_fitlins_reports.py` automatically, but you can also run it manually if needed:
 
 ```bash
-python3 scripts/run/fix_fitlins_reports.py \
-  /data/sld/homes/vguigon/work/fitlins_derivatives/<model>_s<kernel>/reports/model-*.html
+python3 $SLB_ANALYSIS_ROOT/scripts/run/fix_fitlins_reports.py \
+  $SLB_USER_OUT/fitlins_derivatives/<model>_s<kernel>/reports/model-*.html
 
 # Verbose mode prints diagnostics for any figures that could not be resolved
-python3 scripts/run/fix_fitlins_reports.py \
-  /data/sld/homes/vguigon/work/fitlins_derivatives/<model>_s<kernel>/reports/model-*.html \
+python3 $SLB_ANALYSIS_ROOT/scripts/run/fix_fitlins_reports.py \
+  $SLB_USER_OUT/fitlins_derivatives/<model>_s<kernel>/reports/model-*.html \
   --verbose
 ```
 
@@ -413,10 +500,12 @@ The 3D HTML viewers (`.html`) can be opened with VSCode Live Server over SSH wit
 Typical examples:
 
 ```bash
-run_pipeline.sh --config /data/sld/homes/vguigon/slb_work/fitlins_configs/tmth/tmth_visual_vs_baseline.cfg \
+$SLB_ANALYSIS_ROOT/scripts/run/run_pipeline.sh \
+  --config "$SLB_USER_CONFIGS/tmth/tmth_visual_vs_baseline.cfg" \
   --steps plot-run,plot-group,report
 
-submit_pipeline.sh --config /data/sld/homes/vguigon/slb_work/fitlins_configs/tmth/tmth_visual_vs_baseline.cfg \
+$SLB_ANALYSIS_ROOT/scripts/run/submit_pipeline.sh \
+  --config "$SLB_USER_CONFIGS/tmth/tmth_visual_vs_baseline.cfg" \
   --steps plot-run,plot-group,report
 ```
 
